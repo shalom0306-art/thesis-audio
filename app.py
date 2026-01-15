@@ -1,12 +1,4 @@
-박사님, **'[클라우드 전용 전체 코드]'**란 박사님의 PC에서만 돌아가던 프로그램을 인터넷(Streamlit Cloud) 환경에서도 똑똑하게 작동하도록 수정한 최종 설계도를 말합니다.
-
-가장 큰 차이점은 보안입니다. PC에서는 google_key.json 파일을 직접 불러왔지만, 인터넷에 이 파일을 그대로 올리면 해킹의 위험이 있습니다. 그래서 이 코드는 **'비밀 금고(Secrets)'**에 저장된 키 정보를 안전하게 꺼내 쓰도록 설계되어 있습니다.
-
-아래 박스 안의 코드가 바로 그 전체 코드입니다. 이 내용을 통째로 복사해서 깃허브의 app.py 본문에 붙여넣으시면 됩니다.
-
-📄 app.py에 붙여넣을 [클라우드 전용 전체 코드]
-Python
-
+import streamlit as st
 from google.cloud import texttospeech
 import fitz
 import re

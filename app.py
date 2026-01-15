@@ -5,27 +5,27 @@ import fitz
 import re
 import json
 
-# --- 1. 구글 인증 설정 (JSON 통째로 읽기 방식) ---
+# --- 1. 구글 인증 설정 (JSON 문자열 통째로 읽기) ---
 def get_creds():
-    # Secrets에서 'GOOGLE_JSON'이라는 이름의 통글자를 찾아 읽습니다.
     if "GOOGLE_JSON" in st.secrets:
         try:
+            # Secrets에서 가져온 텍스트를 JSON으로 변환
             info = json.loads(st.secrets["GOOGLE_JSON"])
+            # private_key 내부의 줄바꿈 문자열 교정
+            if "private_key" in info:
+                info["private_key"] = info["private_key"].replace("\\n", "\n")
             return service_account.Credentials.from_service_account_info(info)
         except Exception as e:
-            st.error(f"❌ 구글 키 형식 오류: {e}")
+            st.error(f"❌ 구글 키 설정 오류: {e}")
     return None
 
-# --- 2. TTS 엔진 ---
+# --- 2. TTS 엔진 (1.1배속 여성 음성) ---
 def google_premium_tts(text):
     if not text or not text.strip(): return None
     creds = get_creds()
-    if not creds:
-        st.error("🔑 Secrets에 GOOGLE_JSON을 설정해주세요.")
-        return None
+    if not creds: return None
     try:
         client = texttospeech.TextToSpeechClient(credentials=creds)
-        # 긴 논문을 위해 1,500자 단위 분할 합성
         chunks = [text[i:i+1500] for i in range(0, len(text), 1500)]
         combined_audio = b""
         for chunk in chunks:
@@ -38,17 +38,19 @@ def google_premium_tts(text):
             combined_audio += response.audio_content
         return combined_audio
     except Exception as e:
-        st.error(f"⚠️ TTS 합성 실패: {str(e)}")
+        st.error(f"⚠️ TTS 인증 오류: {str(e)}")
         return None
 
-# --- 3. 논문 분석 로직 (기능 복구) ---
+# --- 3. 논문 구조 분석 ---
 def extract_thesis(doc):
     full_text = "".join([page.get_text("text") for page in doc])
     first_page = doc[0].get_text("text").split('\n')
     title = [l.strip() for l in first_page if l.strip() and 'ISSN' not in l][:1][0]
     main_body = full_text.split("참고문헌")[0].split("References")[0]
+    
     abs_match = re.search(r'(요\s*약|국문요약)(.*?)(Abstract|Ⅰ\.)', main_body, re.S)
     summary = abs_match.group(2).strip() if abs_match else main_body[:800]
+    
     chapters = []
     ch_splits = re.split(r'(Ⅰ\.|Ⅱ\.|Ⅲ\.|Ⅳ\.|Ⅴ\.)', main_body)
     for i in range(1, len(ch_splits), 2):
@@ -57,9 +59,9 @@ def extract_thesis(doc):
             chapters.append({"name": name, "content": content})
     return title, summary, chapters
 
-# --- 4. UI 구성 ---
-st.set_page_config(page_title="논문 나레이터 (교정 완료)", layout="wide")
-st.title("🎙️ 논문 나레이터 (Full Version)")
+# --- 4. UI ---
+st.set_page_config(page_title="논문 나레이터 (Smart Clean)", layout="wide")
+st.title("🎙️ 논문 나레이터 (Smart Clean 버전)")
 
 uploaded_file = st.file_uploader("논문 PDF 업로드", type=["pdf"])
 
@@ -88,7 +90,7 @@ if uploaded_file:
     st.divider()
     if st.button("🎙️ 논문 전체 통합 음원 생성", use_container_width=True):
         full_script = f"{data['title']}. {data['summary']}. " + " ".join([ch['content'] for ch in data['chapters']])
-        with st.spinner("전체 음성 합성 중... (수 분이 소요될 수 있습니다)"):
+        with st.spinner("전체 음성 합성 중..."):
             audio = google_premium_tts(full_script)
             if audio:
                 st.audio(audio)

@@ -4,27 +4,36 @@ from google.oauth2 import service_account
 import fitz
 import re
 import json
+import os
 
-# --- 1. 구글 인증 설정 (JSON 문자열 직접 로드 방식) ---
+# --- 1. 구글 인증 설정 (어떤 오타도 스스로 치료하는 버전) ---
 def get_creds():
-    if "GOOGLE_JSON_TEXT" in st.secrets:
-        try:
-            # Secrets에서 JSON 텍스트를 가져와 딕셔너리로 변환
-            info = json.loads(st.secrets["GOOGLE_JSON_TEXT"])
-            return service_account.Credentials.from_service_account_info(info)
-        except Exception as e:
-            st.error(f"❌ 구글 키 설정 오류: {e}")
+    if "google_creds" in st.secrets:
+        info = dict(st.secrets["google_creds"])
+        if "private_key" in info:
+            pk = info["private_key"]
+            header = "-----BEGIN PRIVATE KEY-----"
+            footer = "-----END PRIVATE KEY-----"
+            
+            # [진단 해결] 키 주변에 붙은 'a'나 공백을 무시하고 정답만 추출합니다.
+            if header in pk and footer in pk:
+                try:
+                    start_idx = pk.find(header)
+                    end_idx = pk.find(footer) + len(footer)
+                    # 정확히 푸터까지만 잘라내고 내부 줄바꿈만 정리
+                    clean_pk = pk[start_idx:end_idx].replace("\\n", "\n")
+                    info["private_key"] = clean_pk
+                except:
+                    pass
+        return service_account.Credentials.from_service_account_info(info)
     return None
 
 # --- 2. TTS 엔진 ---
 def google_premium_tts(text):
     if not text or not text.strip(): return None
     creds = get_creds()
-    if not creds: return None
-    
     try:
         client = texttospeech.TextToSpeechClient(credentials=creds)
-        # 긴 텍스트 분할 (1,500자 기준)
         chunks = [text[i:i+1500] for i in range(0, len(text), 1500)]
         combined_audio = b""
         for chunk in chunks:
@@ -37,10 +46,10 @@ def google_premium_tts(text):
             combined_audio += response.audio_content
         return combined_audio
     except Exception as e:
-        st.error(f"⚠️ TTS 합성 중 오류: {str(e)}")
+        st.error(f"⚠️ 구글 인증 오류 (Secrets를 확인하세요): {str(e)}")
         return None
 
-# --- 3. 논문 분석 로직 (장별 낭독 복구) ---
+# --- 3. 논문 분석 로직 (장별 버튼 기능 복구) ---
 def extract_thesis(doc):
     full_text = "".join([page.get_text("text") for page in doc])
     first_page = doc[0].get_text("text").split('\n')
@@ -58,9 +67,9 @@ def extract_thesis(doc):
             chapters.append({"name": name, "content": content})
     return title, summary, chapters
 
-# --- 4. 메인 UI ---
-st.set_page_config(page_title="논문 나레이터 (교정 완료)", layout="wide")
-st.title("🎙️ 논문 나레이터 (Smart Clean 버전)")
+# --- 4. UI 구성 ---
+st.set_page_config(page_title="논문 나레이터 (완성)", layout="wide")
+st.title("🎙️ 논문 나레이터 (Smart & Clean)")
 
 uploaded_file = st.file_uploader("논문 PDF 업로드", type=["pdf"])
 
@@ -73,8 +82,8 @@ if uploaded_file:
     data = st.session_state.thesis_data
     st.subheader(f"📄 제목: {data['title']}")
     
-    if st.button("🔊 요약 전체 듣기"):
-        audio = google_premium_tts(data['summary'])
+    if st.button("🔊 제목+요약 듣기"):
+        audio = google_premium_tts(f"{data['title']}. {data['summary']}")
         if audio: st.audio(audio)
 
     st.divider()
@@ -89,8 +98,8 @@ if uploaded_file:
     st.divider()
     if st.button("🎙️ 논문 전체 통합 음원 생성", use_container_width=True):
         full_script = f"{data['title']}. {data['summary']}. " + " ".join([ch['content'] for ch in data['chapters']])
-        with st.spinner("전체 음성 합성 중... (수 분이 소요될 수 있습니다)"):
+        with st.spinner("전체 합성 중..."):
             audio = google_premium_tts(full_script)
             if audio:
                 st.audio(audio)
-                st.download_button("📥 전체 MP3 다운로드", audio, "full_thesis.mp3", use_container_width=True)
+                st.download_button("📥 전체 MP3 다운로드", audio, "full.mp3", use_container_width=True)

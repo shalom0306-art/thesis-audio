@@ -7,7 +7,6 @@
 📄 app.py에 붙여넣을 [클라우드 전용 전체 코드]
 Python
 
-import streamlit as st
 from google.cloud import texttospeech
 import fitz
 import re

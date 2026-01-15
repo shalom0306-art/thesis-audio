@@ -12,26 +12,29 @@ def get_creds():
         info = dict(st.secrets["google_creds"])
         if "private_key" in info:
             pk = info["private_key"]
-            # [초강력 세척] header와 footer 사이의 순수 데이터만 추출
             header = "-----BEGIN PRIVATE KEY-----"
             footer = "-----END PRIVATE KEY-----"
             
             if header in pk and footer in pk:
-                # 1. 헤더와 푸터 사이의 본문만 가져오기
-                body = pk.split(header)[1].split(footer)[0]
-                # 2. 모든 줄바꿈, 공백, 특수기호를 제거하고 순수 글자만 남기기
-                clean_body = "".join(re.findall(r'[A-Za-z0-9+/=]', body))
-                # 3. 4의 배수가 아니면 남는 찌꺼기 강제 삭제 (65자, 1625자 에러 방지)
-                clean_body = clean_body[:(len(clean_body) // 4) * 4]
-                # 4. 완벽하게 정렬된 형태로 재조립 (footer 뒤에 어떤 글자도 남기지 않음)
-                info["private_key"] = f"{header}\n{clean_body}\n{footer}\n"
+                # [강력 세척] 헤더와 푸터 사이의 본문만 추출 (그 뒤의 'a' 등은 무시)
+                try:
+                    # 헤더 시작점과 푸터 끝점 사이만 정확히 잘라냄
+                    start_idx = pk.find(header)
+                    end_idx = pk.find(footer) + len(footer)
+                    clean_pk = pk[start_idx:end_idx]
+                    
+                    # 내부의 잘못된 줄바꿈(\n 문자열) 처리
+                    clean_pk = clean_pk.replace("\\n", "\n")
+                    info["private_key"] = clean_pk
+                except:
+                    pass
         
         return service_account.Credentials.from_service_account_info(info)
     return None
 
 # --- 2. TTS 엔진 (1.1배속 여성 음성) ---
 def google_premium_tts(text):
-    if not text.strip(): return None
+    if not text or not text.strip(): return None
     creds = get_creds()
     try:
         client = texttospeech.TextToSpeechClient(credentials=creds)
@@ -51,14 +54,14 @@ def google_premium_tts(text):
         st.error(f"⚠️ TTS 인증 오류 발생 (Secrets 확인 필요): {str(e)}")
         return None
 
-# --- 3. 논문 구조 분석 (이미지 5fa050 형태 완벽 복구) ---
+# --- 3. 논문 구조 분석 (장별 버튼 기능 완벽 복구) ---
 def extract_thesis(doc):
     full_text = "".join([page.get_text("text") for page in doc])
     first_page = doc[0].get_text("text").split('\n')
     title = [l.strip() for l in first_page if l.strip() and 'ISSN' not in l][:1][0]
     main_body = full_text.split("참고문헌")[0].split("References")[0]
     
-    # 요약 추출 (I. 서론 이전까지)
+    # 요약 추출
     abs_match = re.search(r'(요\s*약|국문요약)(.*?)(Abstract|Ⅰ\.)', main_body, re.S)
     summary = abs_match.group(2).strip() if abs_match else main_body[:800]
     
@@ -71,7 +74,7 @@ def extract_thesis(doc):
             chapters.append({"name": name, "content": content})
     return title, summary, chapters
 
-# --- 4. 메인 UI ---
+# --- 4. UI 구성 ---
 st.set_page_config(page_title="논문 나레이터 (교정 완료)", layout="wide")
 st.title("🎙️ 논문 나레이터 (Full Version)")
 
